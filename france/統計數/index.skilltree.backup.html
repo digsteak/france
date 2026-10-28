@@ -1,0 +1,1380 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>遊戲技能加點與攻擊力面板 - Skill & ATK System</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #080c14;
+      --card-bg: rgba(15, 23, 42, 0.75);
+      --gold-primary: #f59e0b;
+      --gold-glow: rgba(245, 158, 11, 0.4);
+      --crimson-atk: #ef4444;
+      --crimson-glow: rgba(239, 68, 68, 0.4);
+      --cyan-mana: #06b6d4;
+    }
+
+    body {
+      font-family: 'Noto Sans TC', sans-serif;
+      background: radial-gradient(circle at 50% 20%, #151d2f 0%, #080c14 70%, #030508 100%);
+      color: #e2e8f0;
+      user-select: none;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    .font-cinzel {
+      font-family: 'Cinzel', serif;
+    }
+
+    /* 遊戲風格自定義金屬微光與邊框 */
+    .game-panel {
+      background: linear-gradient(135deg, rgba(20, 29, 47, 0.85) 0%, rgba(10, 15, 26, 0.92) 100%);
+      border: 1px solid rgba(245, 158, 11, 0.25);
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.6), inset 0 0 16px rgba(245, 158, 11, 0.05);
+      backdrop-filter: blur(12px);
+    }
+
+    .game-panel-red {
+      background: linear-gradient(135deg, rgba(35, 15, 18, 0.85) 0%, rgba(18, 8, 10, 0.92) 100%);
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.7), inset 0 0 20px rgba(239, 68, 68, 0.1);
+      backdrop-filter: blur(12px);
+    }
+
+    /* 技能節點外框與光暈 */
+    .node-slot {
+      position: relative;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .node-slot:hover {
+      transform: translateY(-2px) scale(1.04);
+    }
+
+    .node-active {
+      border-color: #f59e0b !important;
+      box-shadow: 0 0 18px rgba(245, 158, 11, 0.5), inset 0 0 10px rgba(245, 158, 11, 0.3);
+    }
+
+    .node-locked {
+      filter: grayscale(0.85) brightness(0.6);
+      opacity: 0.65;
+      cursor: not-allowed !important;
+    }
+
+    .node-maxed {
+      border-color: #ef4444 !important;
+      box-shadow: 0 0 20px rgba(239, 68, 68, 0.6), inset 0 0 12px rgba(239, 68, 68, 0.4);
+    }
+
+    /* 數字跳動動畫 */
+    @keyframes statPop {
+      0% { transform: scale(1); filter: brightness(1); }
+      50% { transform: scale(1.15); filter: brightness(1.6) drop-shadow(0 0 10px #ef4444); color: #fca5a5; }
+      100% { transform: scale(1); filter: brightness(1); }
+    }
+
+    .stat-bump {
+      animation: statPop 0.35s ease-out;
+    }
+
+    /* 浮動戰鬥飄字動畫 */
+    @keyframes floatDamage {
+      0% { opacity: 0; transform: translate(-50%, 0) scale(0.6); }
+      20% { opacity: 1; transform: translate(-50%, -20px) scale(1.2); }
+      80% { opacity: 1; transform: translate(-50%, -60px) scale(1); }
+      100% { opacity: 0; transform: translate(-50%, -90px) scale(0.8); }
+    }
+
+    .damage-text {
+      position: absolute;
+      animation: floatDamage 1.2s forwards cubic-bezier(0.18, 0.89, 0.32, 1.28);
+      font-weight: 900;
+      pointer-events: none;
+      z-index: 50;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.9), 0 0 12px rgba(239,68,68,0.8);
+    }
+
+    /* 發光呼吸燈 */
+    @keyframes pulseGlow {
+      0%, 100% { box-shadow: 0 0 12px rgba(245, 158, 11, 0.3); }
+      50% { box-shadow: 0 0 24px rgba(245, 158, 11, 0.7); }
+    }
+
+    .pulse-glow {
+      animation: pulseGlow 2.5s infinite ease-in-out;
+    }
+
+    /* 背景星火粒子 */
+    .bg-grid-pattern {
+      background-size: 40px 40px;
+      background-image: 
+        linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+    }
+
+    /* 隱藏滾動條但保持滾動 */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+  </style>
+</head>
+<body class="p-3 md:p-6 bg-grid-pattern min-h-screen flex flex-col justify-between">
+
+  <!-- 頂部導航資訊欄 -->
+  <header class="game-panel rounded-2xl p-4 mb-5 flex flex-wrap items-center justify-between gap-4 border-amber-500/30">
+    <!-- 玩家基本身分 -->
+    <div class="flex items-center gap-4">
+      <div class="relative">
+        <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-amber-600 via-red-800 to-slate-900 border-2 border-amber-400 flex items-center justify-center shadow-lg shadow-amber-500/20">
+          <svg class="w-8 h-8 text-amber-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+        </div>
+        <span class="absolute -bottom-2 -right-1 bg-red-600 text-white font-cinzel font-bold text-xs px-2 py-0.5 rounded-full border border-red-400 shadow">
+          LV.72
+        </span>
+      </div>
+
+      <div>
+        <div class="flex items-center gap-2">
+          <h1 class="text-xl md:text-2xl font-black text-amber-400 tracking-wider">修羅狂刃 · 亞倫</h1>
+          <span class="text-xs px-2 py-0.5 rounded bg-red-950/80 border border-red-600/50 text-red-300 font-bold">物理爆發型</span>
+        </div>
+        <p class="text-xs text-slate-400 mt-0.5">專精分支：狂暴戰士 (Berserker Specialist)</p>
+      </div>
+    </div>
+
+    <!-- 技能點池 (Skill Points Indicator) -->
+    <div class="flex items-center gap-6 bg-slate-950/70 border border-amber-500/30 px-5 py-2.5 rounded-xl shadow-inner">
+      <div class="flex flex-col items-center">
+        <span class="text-xs text-amber-300/80 font-bold uppercase tracking-widest flex items-center gap-1">
+          <svg class="w-3.5 h-3.5 text-amber-400" fill="currentColor" viewBox="0 0 20 20">
+            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
+          </svg>
+          剩餘技能點數 (SP)
+        </span>
+        <div class="flex items-baseline gap-1 mt-0.5">
+          <span id="remaining-sp" class="text-3xl font-cinzel font-black text-amber-400 drop-shadow-[0_0_8px_rgba(245,158,11,0.6)]">16</span>
+          <span class="text-xs text-slate-500">/ 50 可用</span>
+        </div>
+      </div>
+
+      <div class="h-8 w-px bg-slate-700/60"></div>
+
+      <!-- 操作按鈕組 -->
+      <div class="flex items-center gap-2">
+        <button id="btn-sound-toggle" onclick="toggleSound()" class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 hover:text-white transition title='音效開關'">
+          <span id="sound-icon">🔊</span>
+        </button>
+        <button onclick="resetPoints()" class="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-slate-800/80 hover:bg-red-950/80 border border-slate-600 hover:border-red-500/80 text-slate-300 hover:text-red-300 transition duration-200">
+          重置點數
+        </button>
+        <button onclick="recommendPoints()" class="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/50 text-amber-300 transition duration-200">
+          一鍵推薦
+        </button>
+        <button onclick="saveChanges()" class="px-4 py-1.5 text-xs font-black rounded-lg bg-gradient-to-r from-amber-500 to-red-600 hover:from-amber-400 hover:to-red-500 text-slate-950 uppercase tracking-wider shadow-md hover:shadow-amber-500/30 transition duration-200 active:scale-95">
+          儲存配置
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 主要核心區：左/中技能樹 + 右側屬性與攻擊力面板 -->
+  <main class="grid grid-cols-1 lg:grid-cols-12 gap-5 flex-1 items-start">
+    
+    <!-- 左側與中央：技能樹分支 (佔 8 欄) -->
+    <section class="lg:col-span-8 flex flex-col gap-4">
+      
+      <!-- 技能流派標籤頁 (Branch Switcher) -->
+      <div class="flex items-center justify-between bg-slate-950/60 p-2 rounded-xl border border-slate-800">
+        <div class="flex gap-2">
+          <button id="tab-branch-1" onclick="switchBranch(1)" class="px-4 py-2 rounded-lg text-sm font-bold bg-amber-500/20 border border-amber-500/60 text-amber-300 shadow-sm flex items-center gap-2 transition">
+            <span>⚔️ 嗜血狂攻系 (主力攻擊)</span>
+          </button>
+          <button id="tab-branch-2" onclick="switchBranch(2)" class="px-4 py-2 rounded-lg text-sm font-bold bg-slate-900 border border-slate-700/60 text-slate-400 hover:text-slate-200 transition flex items-center gap-2">
+            <span>🔥 烈火重刃系 (元素附魔)</span>
+          </button>
+          <button id="tab-branch-3" onclick="switchBranch(3)" class="px-4 py-2 rounded-lg text-sm font-bold bg-slate-900 border border-slate-700/60 text-slate-400 hover:text-slate-200 transition flex items-center gap-2">
+            <span>🛡️ 戰體霸氣系 (被動常駐)</span>
+          </button>
+        </div>
+        <div class="text-xs text-slate-400 hidden sm:block">
+          💡 左鍵提升技能等級 (+1)，右鍵或減號扣減 (-1)
+        </div>
+      </div>
+
+      <!-- 技能樹畫布地圖 (Skill Tree Canvas Container) -->
+      <div class="game-panel rounded-2xl p-6 relative overflow-hidden min-h-[520px] flex flex-col justify-between">
+        
+        <!-- 連線 SVG (連線背景) -->
+        <svg id="tree-connections" class="absolute inset-0 w-full h-full pointer-events-none z-0" xmlns="http://www.w3.org/2000/svg">
+          <!-- 節點動態連線透過 JS 繪製更新 -->
+        </svg>
+
+        <!-- 樹狀階層結構 (Tier 1 ~ Tier 4) -->
+        <div id="skills-container" class="relative z-10 grid grid-rows-4 gap-8 h-full">
+          <!-- 動態由 JavaScript 根據流派渲染 -->
+        </div>
+
+        <!-- 底部快速說明 -->
+        <div class="relative z-10 pt-4 mt-2 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+          <div class="flex items-center gap-4">
+            <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-slate-600"></span> 未學習</span>
+            <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-amber-400 shadow-[0_0_6px_#f59e0b]"></span> 已學習</span>
+            <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_6px_#ef4444]"></span> 已滿級 (MAX)</span>
+            <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-slate-800 border border-slate-600"></span> 🔒 前置未滿</span>
+          </div>
+          <div id="branch-summary" class="text-amber-400/90 font-mono">
+            已投入 SP：<span id="branch-spent">0</span> 點
+          </div>
+        </div>
+
+      </div>
+
+      <!-- 當前選中技能卡片預覽詳情 (Detail Tooltip Box) -->
+      <div id="skill-detail-panel" class="game-panel rounded-xl p-4 border-slate-700/80 bg-slate-900/90 flex flex-col md:flex-row gap-4 items-start md:items-center justify-between transition-all">
+        <div class="flex items-center gap-4">
+          <div id="detail-icon" class="w-14 h-14 rounded-xl bg-slate-800 border border-amber-500/50 flex items-center justify-center text-3xl shadow">
+            ⚔️
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <h3 id="detail-title" class="text-lg font-black text-amber-300">斬鐵重擊</h3>
+              <span id="detail-badge" class="text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">主動技能</span>
+              <span id="detail-level" class="text-xs font-mono text-slate-400">Lv. 3 / 5</span>
+            </div>
+            <p id="detail-desc" class="text-xs text-slate-300 mt-1 max-w-xl">
+              凝聚渾身鬥氣向目標劈砍，造成巨額物理傷害，並使目標破防，直接提升角色攻擊力。
+            </p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end border-t md:border-t-0 pt-2 md:pt-0 border-slate-800">
+          <!-- 攻擊力數值變更預覽 -->
+          <div class="bg-red-950/50 border border-red-500/40 px-3 py-1.5 rounded-lg text-right">
+            <span class="text-[11px] text-red-300 uppercase block font-bold">攻擊力加成預覽</span>
+            <span id="detail-atk-gain" class="text-sm font-black text-red-400 font-cinzel">+120 ATK ➔ +160 ATK</span>
+          </div>
+          <!-- 快捷配點按鈕 -->
+          <div class="flex items-center gap-1.5">
+            <button id="btn-detail-sub" onclick="subPointCurrent()" class="w-8 h-8 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-600 font-bold flex items-center justify-center transition active:scale-90">-</button>
+            <button id="btn-detail-add" onclick="addPointCurrent()" class="px-3 h-8 rounded bg-amber-500 hover:bg-amber-400 text-slate-950 font-black flex items-center justify-center transition active:scale-90 shadow-md">
+              +1 升級
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- 右側核心：屬性面版與【攻擊力 (Attack Power)】專區 (佔 4 欄) -->
+    <section class="lg:col-span-4 flex flex-col gap-4">
+      
+      <!-- 核心大卡片：攻擊力數值 (Attack Power Highlight) -->
+      <div class="game-panel-red rounded-2xl p-5 relative overflow-hidden">
+        <!-- 背景暗流光效 -->
+        <div class="absolute -right-8 -top-8 w-40 h-40 bg-red-600/10 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="flex items-center justify-between mb-2">
+          <div class="flex items-center gap-2">
+            <span class="w-3 h-3 rounded-full bg-red-500 animate-ping"></span>
+            <span class="text-xs font-black uppercase tracking-widest text-red-400">當前角色總戰鬥數值</span>
+          </div>
+          <span class="text-xs px-2 py-0.5 rounded bg-red-900/60 text-red-300 font-mono border border-red-500/30">
+            PVE / PVP 綜合
+          </span>
+        </div>
+
+        <!-- 核心攻擊力數值焦點展示 (Focus On Attack Power) -->
+        <div class="bg-black/60 rounded-xl p-4 border border-red-500/40 relative shadow-inner">
+          <div class="flex justify-between items-baseline mb-1">
+            <span class="text-sm font-bold text-slate-300 tracking-wider flex items-center gap-1.5">
+              <svg class="w-4 h-4 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M12.395 2.553a1 1 0 00-1.45-.385c-.345.23-.614.558-.822.88-.527.82-1.12 2.05-1.597 3.292a17.43 17.43 0 00-.918 3.167 1 1 0 01-.97.808H4a1 1 0 00-.894 1.447l2 4A1 1 0 006 16h4.586l1.707 1.707A1 1 0 0013 18h3a1 1 0 001-1v-3a1 1 0 00-.293-.707L15 11.586V7a1 1 0 00-.293-.707l-2-2a1 1 0 00-.312-.19V4.093c0-.528-.15-1.047-.433-1.493l.433-.047z" clip-rule="evenodd" />
+              </svg>
+              物理攻擊力 (ATK)
+            </span>
+            <span id="atk-gain-indicator" class="text-xs font-bold text-emerald-400 font-mono opacity-0 transition-opacity duration-300">
+              +0 ↑
+            </span>
+          </div>
+
+          <div class="flex items-baseline gap-2">
+            <div id="stat-main-atk" class="text-4xl md:text-5xl font-cinzel font-black text-transparent bg-clip-text bg-gradient-to-r from-red-400 via-amber-300 to-red-500 tracking-tight">
+              3,480
+            </div>
+            <span class="text-xs text-red-300/80 font-mono">傷害區間: <span id="atk-range" class="text-slate-200">3,310 ~ 3,650</span></span>
+          </div>
+
+          <!-- 攻擊力進度條與等級層級 -->
+          <div class="mt-3">
+            <div class="flex justify-between text-[11px] text-slate-400 mb-1 font-mono">
+              <span>攻擊力階位: <strong class="text-amber-400">宗師級 (Tier IV)</strong></span>
+              <span>距下階段 +520</span>
+            </div>
+            <div class="w-full bg-slate-900 rounded-full h-2.5 overflow-hidden border border-red-900/60">
+              <div id="atk-progress-bar" class="bg-gradient-to-r from-amber-500 to-red-500 h-full rounded-full transition-all duration-500" style="width: 72%;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 攻擊力加成構成拆解 (Breakdown) -->
+        <div class="mt-4 grid grid-cols-2 gap-2 text-xs">
+          <div class="bg-slate-950/60 p-2 rounded-lg border border-slate-800">
+            <span class="text-slate-400 block text-[11px]">武器與基礎 ATK</span>
+            <span id="stat-base-atk" class="font-mono font-bold text-slate-200">2,100</span>
+          </div>
+          <div class="bg-slate-950/60 p-2 rounded-lg border border-slate-800">
+            <span class="text-slate-400 block text-[11px]">技能固定增加 ATK</span>
+            <span id="stat-skill-flat" class="font-mono font-bold text-red-400">+980</span>
+          </div>
+          <div class="bg-slate-950/60 p-2 rounded-lg border border-slate-800">
+            <span class="text-slate-400 block text-[11px]">技能百分比提升</span>
+            <span id="stat-skill-percent" class="font-mono font-bold text-amber-400">+18.5%</span>
+          </div>
+          <div class="bg-slate-950/60 p-2 rounded-lg border border-slate-800">
+            <span class="text-slate-400 block text-[11px]">狂怒爆發增傷</span>
+            <span id="stat-frenzy-bonus" class="font-mono font-bold text-red-300">+12.0%</span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- 次要衍生戰鬥數值清單 -->
+      <div class="game-panel rounded-2xl p-5 flex flex-col gap-3">
+        <h4 class="text-xs font-bold text-amber-400/90 uppercase tracking-wider flex items-center gap-1.5">
+          <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          </svg>
+          關聯戰鬥屬性 (Secondary Stats)
+        </h4>
+        <div class="flex flex-col gap-2 text-xs pb-3 border-b border-slate-800/60">
+
+          <!-- 體力/血量 HP -->
+          <div class="p-2.5 rounded-lg bg-gradient-to-br from-rose-950/60 to-slate-950/60 border border-rose-700/40">
+            <div class="flex items-center justify-between mb-1.5">
+              <div class="flex items-center gap-1.5">
+                <span class="text-xl">❤️</span>
+                <span class="text-[10px] text-rose-300/80 font-bold uppercase tracking-wider">體力 / 血量 (HP)</span>
+              </div>
+              <span id="stat-hp" class="font-black font-mono text-rose-200 text-base">8,500</span>
+            </div>
+            <div class="flex flex-wrap gap-1">
+              <span class="px-1.5 py-0.5 rounded bg-rose-900/60 text-rose-300 text-[10px] border border-rose-700/40">🛡️ 最大血量</span>
+              <span class="px-1.5 py-0.5 rounded bg-rose-900/60 text-rose-300 text-[10px] border border-rose-700/40">💪 物理抵禦</span>
+            </div>
+          </div>
+
+          <!-- 魔法攻擊 MATK -->
+          <div class="p-2.5 rounded-lg bg-gradient-to-br from-indigo-950/60 to-slate-950/60 border border-indigo-500/40">
+            <div class="flex items-center justify-between mb-1.5">
+              <div class="flex items-center gap-1.5">
+                <span class="text-xl">✨</span>
+                <span class="text-[10px] text-indigo-300/80 font-bold uppercase tracking-wider">魔法攻擊 (MATK)</span>
+              </div>
+              <span id="stat-matk" class="font-black font-mono text-indigo-200 text-base">850</span>
+            </div>
+            <div class="flex flex-wrap gap-1">
+              <span class="px-1.5 py-0.5 rounded bg-indigo-900/60 text-indigo-300 text-[10px] border border-indigo-700/40">💥 魔法傷害</span>
+              <span class="px-1.5 py-0.5 rounded bg-indigo-900/60 text-indigo-300 text-[10px] border border-indigo-700/40">🔥 元素爆發</span>
+            </div>
+          </div>
+
+          <!-- 智力 INT -->
+          <div class="p-2.5 rounded-lg bg-gradient-to-br from-violet-950/60 to-slate-950/60 border border-violet-500/40">
+            <div class="flex items-center justify-between mb-1.5">
+              <div class="flex items-center gap-1.5">
+                <span class="text-xl">🔮</span>
+                <span class="text-[10px] text-violet-300/80 font-bold uppercase tracking-wider">智力 (INT)</span>
+              </div>
+              <span id="stat-int" class="font-black font-mono text-violet-200 text-base">180</span>
+            </div>
+            <div class="flex flex-wrap gap-1">
+              <span class="px-1.5 py-0.5 rounded bg-violet-900/60 text-violet-300 text-[10px] border border-violet-700/40">⚡ 體力/魔力恢復速度</span>
+              <span class="px-1.5 py-0.5 rounded bg-violet-900/60 text-violet-300 text-[10px] border border-violet-700/40">💎 魔力總量上限</span>
+              <span class="px-1.5 py-0.5 rounded bg-violet-900/60 text-violet-300 text-[10px] border border-violet-700/40">📖 法術招式學習等級</span>
+            </div>
+          </div>
+
+          <!-- 敏捷 AGI -->
+          <div class="p-2.5 rounded-lg bg-gradient-to-br from-emerald-950/60 to-slate-950/60 border border-emerald-500/40">
+            <div class="flex items-center justify-between mb-1.5">
+              <div class="flex items-center gap-1.5">
+                <span class="text-xl">💨</span>
+                <span class="text-[10px] text-emerald-300/80 font-bold uppercase tracking-wider">敏捷度 (AGI)</span>
+              </div>
+              <span id="stat-agi" class="font-black font-mono text-emerald-200 text-base">240</span>
+            </div>
+            <div class="flex flex-wrap gap-1">
+              <span class="px-1.5 py-0.5 rounded bg-emerald-900/60 text-emerald-300 text-[10px] border border-emerald-700/40">🏃 移動速度</span>
+              <span class="px-1.5 py-0.5 rounded bg-emerald-900/60 text-emerald-300 text-[10px] border border-emerald-700/40">⚔️ 攻擊速度</span>
+            </div>
+          </div>
+
+          <!-- 運氣 LCK -->
+          <div class="p-2.5 rounded-lg bg-gradient-to-br from-yellow-950/60 to-amber-950/60 border border-yellow-500/50">
+            <div class="flex items-center justify-between mb-1.5">
+              <div class="flex items-center gap-1.5">
+                <span class="text-xl">🍀</span>
+                <span class="text-[10px] text-yellow-300/80 font-bold uppercase tracking-wider">運氣 (LCK)</span>
+              </div>
+              <span id="stat-lck" class="font-black font-mono text-yellow-200 text-base">55</span>
+            </div>
+            <div class="flex flex-wrap gap-1">
+              <span class="px-1.5 py-0.5 rounded bg-yellow-900/60 text-yellow-300 text-[10px] border border-yellow-700/40">⚡ 暴擊率加成</span>
+              <span class="px-1.5 py-0.5 rounded bg-yellow-900/60 text-yellow-300 text-[10px] border border-yellow-700/40">🎲 賭博勝率</span>
+              <span class="px-1.5 py-0.5 rounded bg-yellow-900/60 text-yellow-300 text-[10px] border border-yellow-700/40">💎 掉寶率與品質</span>
+            </div>
+          </div>
+
+
+
+        <div class="space-y-2.5 text-xs">
+          <!-- 暴擊率 -->
+          <div class="flex items-center justify-between p-2 rounded-lg bg-slate-950/50 border border-slate-800/80">
+            <div class="flex items-center gap-2">
+              <span class="text-amber-400">⚡</span>
+              <span class="text-slate-300">暴擊率 (CRIT Rate)</span>
+            </div>
+            <div class="flex items-center gap-2 font-mono">
+              <span id="stat-crit-rate" class="font-bold text-slate-100">42.5%</span>
+            </div>
+          </div>
+
+          <!-- 暴擊傷害 -->
+          <div class="flex items-center justify-between p-2 rounded-lg bg-slate-950/50 border border-slate-800/80">
+            <div class="flex items-center gap-2">
+              <span class="text-red-400">💥</span>
+              <span class="text-slate-300">暴擊傷害 (CRIT DMG)</span>
+            </div>
+            <div class="flex items-center gap-2 font-mono">
+              <span id="stat-crit-dmg" class="font-bold text-slate-100">225.0%</span>
+            </div>
+          </div>
+
+          <!-- 破甲穿透 -->
+          <div class="flex items-center justify-between p-2 rounded-lg bg-slate-950/50 border border-slate-800/80">
+            <div class="flex items-center gap-2">
+              <span class="text-cyan-400">🗡️</span>
+              <span class="text-slate-300">護甲穿透 (Armor PEN)</span>
+            </div>
+            <div class="flex items-center gap-2 font-mono">
+              <span id="stat-armor-pen" class="font-bold text-slate-100">180 點</span>
+            </div>
+          </div>
+
+          <!-- 攻擊速度 -->
+          <div class="flex items-center justify-between p-2 rounded-lg bg-slate-950/50 border border-slate-800/80">
+            <div class="flex items-center gap-2">
+              <span class="text-emerald-400">🌪️</span>
+              <span class="text-slate-300">攻擊速度 (ATK Speed)</span>
+            </div>
+            <div class="flex items-center gap-2 font-mono">
+              <span id="stat-atk-speed" class="font-bold text-slate-100">1.45 次/秒</span>
+            </div>
+          </div>
+
+          <!-- 綜合戰鬥力評分 -->
+          <div class="flex items-center justify-between p-2.5 rounded-lg bg-gradient-to-r from-amber-950/40 to-slate-950/80 border border-amber-500/30 mt-2">
+            <span class="text-amber-300 font-bold">總合戰鬥力 (CP)</span>
+            <span id="stat-total-cp" class="text-base font-black font-cinzel text-amber-400">48,920</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 戰鬥打擊木人模擬測試區 (Damage Simulation Dummy) -->
+      <div class="game-panel rounded-2xl p-4 border-amber-500/20 text-center relative overflow-hidden">
+        <h4 class="text-xs font-bold text-slate-300 mb-2 flex items-center justify-center gap-1.5">
+          <span>🎯</span> 即時傷害實測木人 (DPS Dummy)
+        </h4>
+        <p class="text-[11px] text-slate-400 mb-3">點擊木人測試目前攻擊力配點下的單發揮刀傷害！</p>
+        
+        <div class="relative flex items-center justify-center h-28 bg-slate-950/80 rounded-xl border border-slate-800" id="dummy-target-area">
+          <button id="btn-hit-dummy" onclick="hitDummy(event)" class="group relative px-6 py-3 rounded-xl bg-gradient-to-b from-slate-800 to-slate-900 hover:from-red-950 hover:to-slate-900 border border-amber-500/30 hover:border-red-500 text-amber-200 transition-all duration-150 active:scale-95 shadow-lg">
+            <span class="text-3xl block group-hover:scale-110 transition-transform">👹</span>
+            <span class="text-xs font-bold text-red-300 mt-1 block">砍擊木人 (TEST HIT)</span>
+          </button>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- 底部版權與提示 -->
+  <footer class="mt-4 text-center text-xs text-slate-500">
+    遊戲技能點數系統 UI · 包含攻擊力加成與實時數值聯動模擬器
+  </footer>
+
+  <!-- 提示浮動 Toast -->
+  <div id="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 px-4 py-2 rounded-xl bg-slate-900/95 border border-amber-500 text-amber-300 text-xs font-bold shadow-2xl opacity-0 pointer-events-none transition-all duration-300 z-50 flex items-center gap-2">
+    <span>✨</span> <span id="toast-msg">已儲存技能配點！</span>
+  </div>
+
+  <script>
+    /* ========================================================
+       遊戲數據模型與技能配置
+       ======================================================== */
+    const BASE_STATS = {
+      baseAtk: 2100,
+      critRate: 35.0,
+      critDmg: 200.0,
+      armorPen: 60,
+      atkSpeed: 1.20,
+      hp: 8500,          // 基礎體力血量 (HP)
+      matk: 850,         // 基礎魔法攻擊 (MATK)
+      intelligence: 180, // 基礎智力 (INT)
+      agility: 240,      // 基礎敏捷度 (AGI)
+      luck: 55           // 基礎運氣 (LCK)
+    };
+
+    let remainingSP = 16;
+    let currentBranch = 1;
+    let selectedSkillId = "b1_s1";
+    let soundEnabled = true;
+
+    // Web Audio API 合成音效（不需要任何外部 CDN 音頻文件）
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    let audioCtx = null;
+
+    function playSound(type) {
+      if (!soundEnabled) return;
+      try {
+        if (!audioCtx) audioCtx = new AudioContext();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        const now = audioCtx.currentTime;
+
+        if (type === 'add') {
+          // 清脆升級音效
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(350, now);
+          osc.frequency.exponentialRampToValueAtTime(750, now + 0.12);
+          gain.gain.setValueAtTime(0.25, now);
+          gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+          osc.start(now);
+          osc.stop(now + 0.15);
+        } else if (type === 'sub') {
+          // 降級退點
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(500, now);
+          osc.frequency.exponentialRampToValueAtTime(220, now + 0.12);
+          gain.gain.setValueAtTime(0.2, now);
+          gain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+          osc.start(now);
+          osc.stop(now + 0.12);
+        } else if (type === 'hit') {
+          // 刀劍打擊重音
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(140, now);
+          osc.frequency.exponentialRampToValueAtTime(40, now + 0.18);
+          gain.gain.setValueAtTime(0.4, now);
+          gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+          osc.start(now);
+          osc.stop(now + 0.2);
+        } else if (type === 'crit') {
+          // 暴擊高頻脆響
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(500, now);
+          osc.frequency.exponentialRampToValueAtTime(1200, now + 0.25);
+          gain.gain.setValueAtTime(0.35, now);
+          gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+          osc.start(now);
+          osc.stop(now + 0.25);
+        } else if (type === 'error') {
+          // 點數不足警告
+          osc.type = 'square';
+          osc.frequency.setValueAtTime(160, now);
+          osc.frequency.setValueAtTime(130, now + 0.08);
+          gain.gain.setValueAtTime(0.15, now);
+          gain.gain.exponentialRampToValueAtTime(0.01, now + 0.18);
+          osc.start(now);
+          osc.stop(now + 0.18);
+        }
+      } catch (e) {
+        // Audio error fallback
+      }
+    }
+
+    // 技能樹結構配置 (分支1: 嗜血狂攻, 分支2: 烈火重刃, 分支3: 戰體霸氣)
+    const SKILL_DATABASE = {
+      // ===== 分支 1: 嗜血狂攻 (以物理攻擊力為核心) =====
+      branch1: [
+        {
+          id: "b1_s1",
+          name: "磨刃修煉",
+          icon: "🗡️",
+          type: "被動",
+          tier: 1,
+          col: 1,
+          maxLevel: 5,
+          currentLevel: 3,
+          requires: null,
+          reqLevel: 0,
+          desc: "磨礪武器鋒刃，大幅提升常駐物理基礎攻擊力與最小傷害區間。",
+          atkFlatPerLevel: 45,      // 每級直接增加攻擊力
+          atkPercentPerLevel: 1.2,  // 每級攻擊力百分比
+          critRatePerLevel: 0,
+          critDmgPerLevel: 0,
+          armorPenPerLevel: 10,
+          hpPerLevel: 120,
+          matkPerLevel: 0,
+          intPerLevel: 0,
+          agiPerLevel: 8,
+          lckPerLevel: 2
+        },
+        {
+          id: "b1_s2",
+          name: "重刃破甲斬",
+          icon: "🪓",
+          type: "主動",
+          tier: 1,
+          col: 2,
+          maxLevel: 5,
+          currentLevel: 2,
+          requires: null,
+          reqLevel: 0,
+          desc: "破防重劈，攻擊時無視敵方部分護甲，並附帶額外攻擊力修正。",
+          atkFlatPerLevel: 60,
+          atkPercentPerLevel: 1.5,
+          critRatePerLevel: 1.0,
+          critDmgPerLevel: 0,
+          armorPenPerLevel: 25,
+          hpPerLevel: 80,
+          matkPerLevel: 0,
+          intPerLevel: 0,
+          agiPerLevel: 12,
+          lckPerLevel: 3
+        },
+        {
+          id: "b1_s3",
+          name: "嗜血狂意",
+          icon: "🩸",
+          type: "被動",
+          tier: 2,
+          col: 1,
+          maxLevel: 5,
+          currentLevel: 2,
+          requires: "b1_s1",
+          reqLevel: 3,
+          desc: "進入狂血狀態，受攻擊或擊中敵人時，依照自身失去生命激發額外攻擊力。",
+          atkFlatPerLevel: 90,
+          atkPercentPerLevel: 2.5,
+          critRatePerLevel: 1.5,
+          critDmgPerLevel: 8.0,
+          armorPenPerLevel: 15,
+          hpPerLevel: 200,
+          matkPerLevel: 0,
+          intPerLevel: 0,
+          agiPerLevel: 6,
+          lckPerLevel: 1
+        },
+        {
+          id: "b1_s4",
+          name: "致命連環斬",
+          icon: "⚔️",
+          type: "主動",
+          tier: 2,
+          col: 2,
+          maxLevel: 5,
+          currentLevel: 1,
+          requires: "b1_s2",
+          reqLevel: 3,
+          desc: "瞬間對前方揮舞出三道狂暴刀芒，每一擊均疊加角色攻擊力。",
+          atkFlatPerLevel: 110,
+          atkPercentPerLevel: 2.0,
+          critRatePerLevel: 2.0,
+          critDmgPerLevel: 10.0,
+          armorPenPerLevel: 20,
+          hpPerLevel: 60,
+          matkPerLevel: 0,
+          intPerLevel: 0,
+          agiPerLevel: 18,
+          lckPerLevel: 4
+        },
+        {
+          id: "b1_s5",
+          name: "戰鬼覺醒",
+          icon: "👹",
+          type: "被動",
+          tier: 3,
+          col: 1,
+          maxLevel: 5,
+          currentLevel: 1,
+          requires: "b1_s3",
+          reqLevel: 3,
+          desc: "化身為狂戰修羅，角色整體攻擊力獲得巨幅百分比乘算放大。",
+          atkFlatPerLevel: 150,
+          atkPercentPerLevel: 4.0,
+          critRatePerLevel: 2.5,
+          critDmgPerLevel: 15.0,
+          armorPenPerLevel: 35,
+          hpPerLevel: 350,
+          matkPerLevel: 0,
+          intPerLevel: 5,
+          agiPerLevel: 10,
+          lckPerLevel: 2
+        },
+        {
+          id: "b1_s6",
+          name: "滅絕神斬",
+          icon: "⚡",
+          type: "終極奧義",
+          tier: 4,
+          col: 1,
+          maxLevel: 3,
+          currentLevel: 1,
+          requires: "b1_s5",
+          reqLevel: 3,
+          desc: "將全數鬥氣凝聚為開天一擊，毀滅天地，造成極致核爆級物理傷害！",
+          atkFlatPerLevel: 320,
+          atkPercentPerLevel: 8.0,
+          critRatePerLevel: 5.0,
+          critDmgPerLevel: 30.0,
+          armorPenPerLevel: 80,
+          hpPerLevel: 500,
+          matkPerLevel: 0,
+          intPerLevel: 8,
+          agiPerLevel: 15,
+          lckPerLevel: 5
+        }
+      ],
+
+      // ===== 分支 2: 烈火重刃 (火焰與攻擊力) =====
+      branch2: [
+        {
+          id: "b2_s1",
+          name: "火熱刀刃",
+          icon: "🔥",
+          type: "被動",
+          tier: 1,
+          col: 1,
+          maxLevel: 5,
+          currentLevel: 0,
+          requires: null,
+          reqLevel: 0,
+          desc: "刀鋒附著高溫烈焰，每次普攻附加額外火焰攻擊力。",
+          atkFlatPerLevel: 50,
+          atkPercentPerLevel: 1.0,
+          critRatePerLevel: 0.5,
+          critDmgPerLevel: 5.0,
+          armorPenPerLevel: 12,
+          hpPerLevel: 0,
+          matkPerLevel: 80,
+          intPerLevel: 15,
+          agiPerLevel: 5,
+          lckPerLevel: 6
+        },
+        {
+          id: "b2_s2",
+          name: "烈焰焚天劈",
+          icon: "☄️",
+          type: "主動",
+          tier: 2,
+          col: 1,
+          maxLevel: 5,
+          currentLevel: 0,
+          requires: "b2_s1",
+          reqLevel: 3,
+          desc: "猛擊地面釋放扇形火浪，焚燒敵人護甲並爆發灼熱攻擊力。",
+          atkFlatPerLevel: 100,
+          atkPercentPerLevel: 2.5,
+          critRatePerLevel: 1.5,
+          critDmgPerLevel: 12.0,
+          armorPenPerLevel: 25,
+          hpPerLevel: 0,
+          matkPerLevel: 150,
+          intPerLevel: 30,
+          agiPerLevel: 8,
+          lckPerLevel: 8
+        },
+        {
+          id: "b2_s3",
+          name: "炎神附體",
+          icon: "🌋",
+          type: "終極奧義",
+          tier: 3,
+          col: 1,
+          maxLevel: 3,
+          currentLevel: 0,
+          requires: "b2_s2",
+          reqLevel: 3,
+          desc: "召喚炎帝巨靈附體，所有招式額外疊加 40% 爆發灼燒攻擊力。",
+          atkFlatPerLevel: 280,
+          atkPercentPerLevel: 7.0,
+          critRatePerLevel: 4.0,
+          critDmgPerLevel: 25.0,
+          armorPenPerLevel: 60,
+          hpPerLevel: 0,
+          matkPerLevel: 400,
+          intPerLevel: 80,
+          agiPerLevel: 12,
+          lckPerLevel: 15
+        }
+      ],
+
+      // ===== 分支 3: 戰體霸氣 (攻速、暴擊與破甲) =====
+      branch3: [
+        {
+          id: "b3_s1",
+          name: "疾風迅捷",
+          icon: "🌪️",
+          type: "被動",
+          tier: 1,
+          col: 1,
+          maxLevel: 5,
+          currentLevel: 0,
+          requires: null,
+          reqLevel: 0,
+          desc: "調整呼吸與體態，提升攻擊速度，使攻擊更為行雲流水。",
+          atkFlatPerLevel: 30,
+          atkPercentPerLevel: 0.8,
+          critRatePerLevel: 1.5,
+          critDmgPerLevel: 6.0,
+          armorPenPerLevel: 15,
+          hpPerLevel: 150,
+          matkPerLevel: 0,
+          intPerLevel: 5,
+          agiPerLevel: 25,
+          lckPerLevel: 5
+        },
+        {
+          id: "b3_s2",
+          name: "致命要害尋找",
+          icon: "🎯",
+          type: "被動",
+          tier: 2,
+          col: 1,
+          maxLevel: 5,
+          currentLevel: 0,
+          requires: "b3_s1",
+          reqLevel: 3,
+          desc: "洞察敵人弱點破綻，大幅拉高暴擊率與暴擊攻擊傷害倍率。",
+          atkFlatPerLevel: 80,
+          atkPercentPerLevel: 2.0,
+          critRatePerLevel: 3.5,
+          critDmgPerLevel: 18.0,
+          armorPenPerLevel: 30,
+          hpPerLevel: 100,
+          matkPerLevel: 0,
+          intPerLevel: 12,
+          agiPerLevel: 20,
+          lckPerLevel: 7
+        },
+        {
+          id: "b3_s3",
+          name: "霸者天威",
+          icon: "👑",
+          type: "終極奧義",
+          tier: 3,
+          col: 1,
+          maxLevel: 3,
+          currentLevel: 0,
+          requires: "b3_s2",
+          reqLevel: 3,
+          desc: "釋放無上霸者氣場，威壓周圍所有敵人，自身攻擊力與穿透提升至巔峰！",
+          atkFlatPerLevel: 260,
+          atkPercentPerLevel: 6.5,
+          critRatePerLevel: 5.0,
+          critDmgPerLevel: 28.0,
+          armorPenPerLevel: 70,
+          hpPerLevel: 300,
+          matkPerLevel: 50,
+          intPerLevel: 20,
+          agiPerLevel: 30,
+          lckPerLevel: 12
+        }
+      ]
+    };
+
+    // 取得所有技能清單平鋪陣列
+    function getAllSkills() {
+      return [...SKILL_DATABASE.branch1, ...SKILL_DATABASE.branch2, ...SKILL_DATABASE.branch3];
+    }
+
+    function findSkill(id) {
+      return getAllSkills().find(s => s.id === id);
+    }
+
+    // 檢查某技能是否解鎖（滿足前置條件）
+    function isSkillUnlocked(skill) {
+      if (!skill.requires) return true;
+      const parent = findSkill(skill.requires);
+      return parent && parent.currentLevel >= skill.reqLevel;
+    }
+
+    /* ========================================================
+       核心攻擊力與戰鬥數值計算引擎
+       ======================================================== */
+    function calculateStats() {
+      let totalSkillFlatAtk = 0;
+      let totalSkillPercentAtk = 0;
+      let bonusCritRate = 0;
+      let bonusCritDmg = 0;
+      let bonusArmorPen = 0;
+      let bonusHp = 0;
+      let bonusMatk = 0;
+      let bonusInt = 0;
+      let bonusAgi = 0;
+      let bonusLck = 0;
+
+      getAllSkills().forEach(s => {
+        if (s.currentLevel > 0) {
+          totalSkillFlatAtk += s.atkFlatPerLevel * s.currentLevel;
+          totalSkillPercentAtk += s.atkPercentPerLevel * s.currentLevel;
+          bonusCritRate += (s.critRatePerLevel || 0) * s.currentLevel;
+          bonusCritDmg += (s.critDmgPerLevel || 0) * s.currentLevel;
+          bonusArmorPen += (s.armorPenPerLevel || 0) * s.currentLevel;
+          bonusHp += (s.hpPerLevel || 0) * s.currentLevel;
+          bonusMatk += (s.matkPerLevel || 0) * s.currentLevel;
+          bonusInt += (s.intPerLevel || 0) * s.currentLevel;
+          bonusAgi += (s.agiPerLevel || 0) * s.currentLevel;
+          bonusLck += (s.lckPerLevel || 0) * s.currentLevel;
+        }
+      });
+
+      // 總攻擊力公式 = (基礎攻擊力 + 技能固定攻擊力) * (1 + 技能百分比 / 100)
+      const rawAtk = (BASE_STATS.baseAtk + totalSkillFlatAtk) * (1 + totalSkillPercentAtk / 100);
+      const totalAtk = Math.round(rawAtk);
+
+      // 傷害波動區間 (±5%)
+      const minAtk = Math.round(totalAtk * 0.95);
+      const maxAtk = Math.round(totalAtk * 1.05);
+
+      const finalCritRate = (BASE_STATS.critRate + bonusCritRate).toFixed(1);
+      const finalCritDmg = (BASE_STATS.critDmg + bonusCritDmg).toFixed(1);
+      const finalArmorPen = Math.round(BASE_STATS.armorPen + bonusArmorPen);
+
+      // 綜合戰鬥力 CP = 攻擊力 * 10 + 暴擊加權 + 穿透加權
+      const combatPower = Math.round(totalAtk * 9.2 + parseFloat(finalCritRate) * 120 + parseFloat(finalCritDmg) * 55 + finalArmorPen * 15);
+
+      const finalHp = Math.round(BASE_STATS.hp + bonusHp);
+      const finalMatk = Math.round(BASE_STATS.matk + bonusMatk);
+      const finalInt = Math.round(BASE_STATS.intelligence + bonusInt);
+      const finalAgi = Math.round(BASE_STATS.agility + bonusAgi);
+      const finalLck = Math.round(BASE_STATS.luck + bonusLck);
+
+      return {
+        totalAtk,
+        minAtk,
+        maxAtk,
+        totalSkillFlatAtk,
+        totalSkillPercentAtk: totalSkillPercentAtk.toFixed(1),
+        finalCritRate,
+        finalCritDmg,
+        finalArmorPen,
+        combatPower,
+        finalHp,
+        finalMatk,
+        finalInt,
+        finalAgi,
+        finalLck
+      };
+    }
+
+    /* ========================================================
+       UI 渲染與互動
+       ======================================================== */
+    let lastAtkValue = 0;
+
+    function renderUI() {
+      // 1. 更新剩餘 SP
+      document.getElementById('remaining-sp').innerText = remainingSP;
+
+      // 2. 計算並更新數值
+      const stats = calculateStats();
+
+      // 攻擊力主數值
+      const atkElement = document.getElementById('stat-main-atk');
+      if (lastAtkValue !== 0 && lastAtkValue !== stats.totalAtk) {
+        atkElement.classList.remove('stat-bump');
+        void atkElement.offsetWidth; // trigger reflow
+        atkElement.classList.add('stat-bump');
+
+        // 浮現增量提示
+        const diff = stats.totalAtk - lastAtkValue;
+        const gainIndicator = document.getElementById('atk-gain-indicator');
+        gainIndicator.innerText = (diff >= 0 ? `+${diff}` : `${diff}`) + " ATK";
+        gainIndicator.className = `text-xs font-bold font-mono transition-opacity duration-300 opacity-100 ${diff >= 0 ? 'text-emerald-400' : 'text-rose-400'}`;
+        setTimeout(() => {
+          gainIndicator.classList.remove('opacity-100');
+          gainIndicator.classList.add('opacity-0');
+        }, 1800);
+      }
+      atkElement.innerText = stats.totalAtk.toLocaleString();
+      document.getElementById('atk-range').innerText = `${stats.minAtk.toLocaleString()} ~ ${stats.maxAtk.toLocaleString()}`;
+
+      // 進度條與拆解
+      document.getElementById('stat-base-atk').innerText = BASE_STATS.baseAtk.toLocaleString();
+      document.getElementById('stat-skill-flat').innerText = `+${stats.totalSkillFlatAtk.toLocaleString()}`;
+      document.getElementById('stat-skill-percent').innerText = `+${stats.totalSkillPercentAtk}%`;
+      
+      const progressPercent = Math.min(100, Math.max(15, (stats.totalAtk - 2000) / 25));
+      document.getElementById('atk-progress-bar').style.width = `${progressPercent}%`;
+
+      // 次要數值
+      document.getElementById('stat-crit-rate').innerText = `${stats.finalCritRate}%`;
+      document.getElementById('stat-crit-dmg').innerText = `${stats.finalCritDmg}%`;
+      document.getElementById('stat-armor-pen').innerText = `${stats.finalArmorPen} 點`;
+      document.getElementById('stat-total-cp').innerText = stats.combatPower.toLocaleString();
+
+      // 五大屬性
+      document.getElementById('stat-hp').innerText = stats.finalHp.toLocaleString();
+      document.getElementById('stat-matk').innerText = stats.finalMatk.toLocaleString();
+      document.getElementById('stat-int').innerText = stats.finalInt;
+      document.getElementById('stat-agi').innerText = stats.finalAgi;
+      document.getElementById('stat-lck').innerText = stats.finalLck;
+
+      lastAtkValue = stats.totalAtk;
+
+      // 3. 渲染技能樹節點
+      renderSkillTree();
+
+      // 4. 更新當前選中技能的詳情卡片
+      renderSkillDetail();
+    }
+
+    function renderSkillTree() {
+      const container = document.getElementById('skills-container');
+      const branchKey = `branch${currentBranch}`;
+      const skills = SKILL_DATABASE[branchKey];
+
+      // 計算該分支投入的 SP 總數
+      let branchSpent = 0;
+      skills.forEach(s => branchSpent += s.currentLevel);
+      document.getElementById('branch-spent').innerText = branchSpent;
+
+      // 分層分組 (依據 tier: 1, 2, 3, 4)
+      const tiers = [1, 2, 3, 4];
+      let html = '';
+
+      tiers.forEach(tierNum => {
+        const tierSkills = skills.filter(s => s.tier === tierNum);
+        html += `<div class="flex items-center justify-around relative w-full" data-tier="${tierNum}">`;
+
+        tierSkills.forEach(s => {
+          const unlocked = isSkillUnlocked(s);
+          const isMax = s.currentLevel >= s.maxLevel;
+          const isSelected = s.id === selectedSkillId;
+
+          let statusClass = "node-active";
+          if (!unlocked) statusClass = "node-locked";
+          else if (isMax) statusClass = "node-maxed";
+
+          const selectedRing = isSelected ? "ring-2 ring-amber-300 ring-offset-2 ring-offset-slate-900" : "";
+
+          // 每級提供多少攻擊力標籤
+          const atkPerLvText = `+${s.atkFlatPerLevel} 攻`;
+
+          html += `
+            <div id="node-${s.id}" 
+                 onclick="selectAndAddSkill('${s.id}', event)" 
+                 oncontextmenu="subSkillPoint('${s.id}', event)"
+                 class="node-slot cursor-pointer flex flex-col items-center group relative">
+              
+              <!-- 節點圖標圓框 -->
+              <div class="w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-950 border-2 ${statusClass} ${selectedRing} flex flex-col items-center justify-center p-1 relative shadow-xl transition-all">
+                <span class="text-2xl md:text-3xl filter drop-shadow">${s.icon}</span>
+                
+                <!-- 等級標記 -->
+                <span class="absolute -bottom-2 px-2 py-0.5 rounded-full text-[11px] font-bold font-mono ${isMax ? 'bg-red-600 text-white' : (s.currentLevel > 0 ? 'bg-amber-500 text-slate-950' : 'bg-slate-700 text-slate-300')} border border-slate-900 shadow">
+                  ${s.currentLevel}/${s.maxLevel}
+                </span>
+
+                <!-- 鎖定圖標 -->
+                ${!unlocked ? '<span class="absolute inset-0 bg-black/60 rounded-2xl flex items-center justify-center text-lg">🔒</span>' : ''}
+              </div>
+
+              <!-- 節點名稱與攻擊力標籤 -->
+              <div class="mt-3 text-center">
+                <span class="text-xs font-bold ${isSelected ? 'text-amber-300' : 'text-slate-300'} group-hover:text-amber-400 block tracking-wide">${s.name}</span>
+                <span class="text-[10px] text-red-400 font-mono font-bold block">${atkPerLvText}</span>
+              </div>
+
+              <!-- 懸停快捷增減小按鈕組 (Desktop 友好) -->
+              <div class="absolute -top-3 -right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-20">
+                <button onclick="subSkillPoint('${s.id}', event)" class="w-5 h-5 rounded-full bg-slate-800 hover:bg-red-800 border border-slate-600 text-white text-xs flex items-center justify-center shadow" title="減 1 點">-</button>
+                <button onclick="addSkillPoint('${s.id}', event)" class="w-5 h-5 rounded-full bg-amber-500 hover:bg-amber-400 border border-amber-300 text-slate-950 font-black text-xs flex items-center justify-center shadow" title="加 1 點">+</button>
+              </div>
+
+            </div>
+          `;
+        });
+
+        html += `</div>`;
+      });
+
+      container.innerHTML = html;
+    }
+
+    function renderSkillDetail() {
+      const s = findSkill(selectedSkillId);
+      if (!s) return;
+
+      document.getElementById('detail-icon').innerText = s.icon;
+      document.getElementById('detail-title').innerText = s.name;
+      document.getElementById('detail-badge').innerText = s.type;
+      document.getElementById('detail-level').innerText = `等級: Lv. ${s.currentLevel} / ${s.maxLevel}`;
+      document.getElementById('detail-desc').innerText = s.desc;
+
+      const currentAtkGain = s.currentLevel * s.atkFlatPerLevel;
+      const nextAtkGain = Math.min(s.maxLevel, s.currentLevel + 1) * s.atkFlatPerLevel;
+
+      if (s.currentLevel >= s.maxLevel) {
+        document.getElementById('detail-atk-gain').innerText = `已達最高階 (MAX: +${currentAtkGain} ATK)`;
+      } else {
+        document.getElementById('detail-atk-gain').innerText = `+${currentAtkGain} ATK ➔ +${nextAtkGain} ATK (+${s.atkFlatPerLevel})`;
+      }
+
+      // 控制增減按鈕狀態
+      const btnAdd = document.getElementById('btn-detail-add');
+      const btnSub = document.getElementById('btn-detail-sub');
+
+      const unlocked = isSkillUnlocked(s);
+      btnAdd.disabled = (!unlocked || remainingSP <= 0 || s.currentLevel >= s.maxLevel);
+      btnSub.disabled = (s.currentLevel <= 0);
+
+      if (btnAdd.disabled) {
+        btnAdd.classList.add('opacity-50', 'cursor-not-allowed');
+      } else {
+        btnAdd.classList.remove('opacity-50', 'cursor-not-allowed');
+      }
+
+      if (btnSub.disabled) {
+        btnSub.classList.add('opacity-50', 'cursor-not-allowed');
+      } else {
+        btnSub.classList.remove('opacity-50', 'cursor-not-allowed');
+      }
+    }
+
+    /* ========================================================
+       加點與操作邏輯
+       ======================================================== */
+    function selectAndAddSkill(skillId, event) {
+      if (event) event.stopPropagation();
+      selectedSkillId = skillId;
+      renderUI();
+    }
+
+    function addSkillPoint(skillId, event) {
+      if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+      }
+
+      const s = findSkill(skillId);
+      if (!s) return;
+
+      if (!isSkillUnlocked(s)) {
+        showToast("⚠️ 前置技能等級未滿足，無法解鎖此技能！");
+        playSound('error');
+        return;
+      }
+
+      if (s.currentLevel >= s.maxLevel) {
+        showToast("✨ 該技能已達到當前最高等級 (MAX)！");
+        playSound('error');
+        return;
+      }
+
+      if (remainingSP <= 0) {
+        showToast("❌ 剩餘技能點數 (SP) 不足！");
+        playSound('error');
+        return;
+      }
+
+      remainingSP--;
+      s.currentLevel++;
+      selectedSkillId = skillId;
+      playSound('add');
+      renderUI();
+    }
+
+    function subSkillPoint(skillId, event) {
+      if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+      }
+
+      const s = findSkill(skillId);
+      if (!s || s.currentLevel <= 0) return;
+
+      // 檢查是否有後置技能依賴此技能的等級
+      const dependents = getAllSkills().filter(child => child.requires === skillId && child.currentLevel > 0);
+      if (dependents.length > 0 && s.currentLevel - 1 < dependents[0].reqLevel) {
+        showToast(`⚠️ 已有後續高階技能投入點數，無法降級！需先重置或退回後續技能。`);
+        playSound('error');
+        return;
+      }
+
+      s.currentLevel--;
+      remainingSP++;
+      selectedSkillId = skillId;
+      playSound('sub');
+      renderUI();
+    }
+
+    function addPointCurrent() {
+      addSkillPoint(selectedSkillId);
+    }
+
+    function subPointCurrent() {
+      subSkillPoint(selectedSkillId);
+    }
+
+    // 分支切換
+    function switchBranch(branchNum) {
+      currentBranch = branchNum;
+      
+      // 更新 Tab 樣式
+      for (let i = 1; i <= 3; i++) {
+        const tab = document.getElementById(`tab-branch-${i}`);
+        if (i === branchNum) {
+          tab.className = "px-4 py-2 rounded-lg text-sm font-bold bg-amber-500/20 border border-amber-500/60 text-amber-300 shadow-sm flex items-center gap-2 transition";
+        } else {
+          tab.className = "px-4 py-2 rounded-lg text-sm font-bold bg-slate-900 border border-slate-700/60 text-slate-400 hover:text-slate-200 transition flex items-center gap-2";
+        }
+      }
+
+      // 預設選中該分支的第一個技能
+      const firstSkill = SKILL_DATABASE[`branch${branchNum}`][0];
+      if (firstSkill) selectedSkillId = firstSkill.id;
+
+      renderUI();
+    }
+
+    // 重置所有點數
+    function resetPoints() {
+      let refunded = 0;
+      getAllSkills().forEach(s => {
+        refunded += s.currentLevel;
+        s.currentLevel = 0;
+      });
+
+      remainingSP += refunded;
+      showToast(`🔄 已重置所有技能點數，返還 ${refunded} 點 SP！`);
+      playSound('sub');
+      renderUI();
+    }
+
+    // 一鍵推薦極限物理攻擊加點
+    function recommendPoints() {
+      resetPoints();
+      
+      // 狂戰純攻擊力優先分配策略
+      const prio = [
+        { id: "b1_s1", pts: 5 }, // 磨刃
+        { id: "b1_s2", pts: 3 }, // 重刃破甲
+        { id: "b1_s3", pts: 4 }, // 嗜血狂意
+        { id: "b1_s5", pts: 3 }, // 戰鬼覺醒
+        { id: "b1_s6", pts: 2 }, // 滅絕神斬
+        { id: "b3_s1", pts: 3 }, // 疾風
+        { id: "b3_s2", pts: 2 }  // 致命要害
+      ];
+
+      for (let step of prio) {
+        const s = findSkill(step.id);
+        if (s) {
+          const alloc = Math.min(step.pts, remainingSP, s.maxLevel);
+          s.currentLevel = alloc;
+          remainingSP -= alloc;
+        }
+      }
+
+      currentBranch = 1;
+      switchBranch(1);
+      showToast("🔥 已套用【極限爆發斬擊流】攻擊力推薦配置！");
+      playSound('add');
+      renderUI();
+    }
+
+    function saveChanges() {
+      showToast("💾 技能與攻擊力配點方案已成功寫入角色存檔！");
+      playSound('add');
+    }
+
+    function toggleSound() {
+      soundEnabled = !soundEnabled;
+      document.getElementById('sound-icon').innerText = soundEnabled ? '🔊' : '🔇';
+      showToast(soundEnabled ? '音效已開啟' : '音效已靜音');
+    }
+
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      document.getElementById('toast-msg').innerText = msg;
+      toast.classList.remove('opacity-0', 'pointer-events-none');
+      toast.classList.add('opacity-100');
+      setTimeout(() => {
+        toast.classList.remove('opacity-100');
+        toast.classList.add('opacity-0', 'pointer-events-none');
+      }, 2200);
+    }
+
+    /* ========================================================
+       木人戰鬥打擊模擬 (顯示傷害跳字)
+       ======================================================== */
+    function hitDummy(event) {
+      const dummyArea = document.getElementById('dummy-target-area');
+      const stats = calculateStats();
+
+      // 計算是否暴擊
+      const isCrit = Math.random() * 100 < parseFloat(stats.finalCritRate);
+      
+      // 傷害浮動 = 基礎區間隨機
+      const spread = (Math.random() * 0.1 - 0.05); // -5% ~ +5%
+      let damage = Math.round(stats.totalAtk * (1 + spread));
+
+      if (isCrit) {
+        damage = Math.round(damage * (parseFloat(stats.finalCritDmg) / 100));
+        playSound('crit');
+      } else {
+        playSound('hit');
+      }
+
+      // 產生跳字元素
+      const dmgSpan = document.createElement('div');
+      dmgSpan.className = `damage-text font-cinzel ${isCrit ? 'text-amber-300 text-3xl' : 'text-red-400 text-xl'}`;
+      dmgSpan.innerHTML = isCrit ? `CRIT! ${damage.toLocaleString()}` : `${damage.toLocaleString()}`;
+
+      // 隨機在按鈕周遭飄出
+      const offsetX = (Math.random() - 0.5) * 80;
+      dmgSpan.style.left = `calc(50% + ${offsetX}px)`;
+      dmgSpan.style.top = `40%`;
+
+      dummyArea.appendChild(dmgSpan);
+
+      setTimeout(() => {
+        if (dmgSpan.parentNode) dmgSpan.parentNode.removeChild(dmgSpan);
+      }, 1200);
+    }
+
+    // 禁用右鍵預設選單，方便玩家右鍵減點
+    document.addEventListener('contextmenu', function(e) {
+      if (e.target.closest('.node-slot')) {
+        e.preventDefault();
+      }
+    });
+
+    // 初始化執行
+    window.addEventListener('DOMContentLoaded', () => {
+      renderUI();
+    });
+  </script>
+</body>
+</html>
